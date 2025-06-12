@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial News Sentiment Trading System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding-top: 20px;
+            background-color: #f8f9fa;
+        }
+        .headline {
+            padding: 15px;
+            margin-bottom: 15px;
+            border-left: 4px solid #007bff;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .news-article {
+            padding: 20px;
+            margin-bottom: 20px;
+            background-color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border-left: 5px solid #28a745;
+        }
+        .news-article .title {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 10px;
+            line-height: 1.4;
+        }
+        .news-article .description {
+            color: #6c757d;
+            font-size: 0.95em;
+            margin-bottom: 10px;
+            line-height: 1.5;
+        }
+        .news-article .meta {
+            font-size: 0.85em;
+            color: #868e96;
+            border-top: 1px solid #e9ecef;
+            padding-top: 10px;
+            margin-top: 15px;
+        }
+        .news-article .source-link {
+            color: #007bff;
+            text-decoration: none;
+        }
+        .news-article .source-link:hover {
+            text-decoration: underline;
+        }
+        .agent-output {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            font-size: 0.9em;
+        }
+        .classifier {
+            background-color: #e2f0d9;
+            border-left: 3px solid #28a745;
+        }
+        .mapper {
+            background-color: #deebf7;
+            border-left: 3px solid #007bff;
+        }
+        .aggregator {
+            background-color: #fff2cc;
+            border-left: 3px solid #ffc107;
+        }
+        .decision {
+            background-color: #f2dcdb;
+            border-left: 3px solid #dc3545;
+        }
+        .signal-long {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .signal-short {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .signal-flat {
+            color: #6c757d;
+            font-weight: bold;
+        }
+        .confidence-bar {
+            height: 8px;
+            margin-top: 5px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .confidence-level {
+            height: 100%;
+            background-color: #007bff;
+            transition: width 0.3s ease;
+        }
+        .card {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .card-header {
+            background-color: #007bff;
+            color: white;
+            border-radius: 12px 12px 0 0 !important;
+            font-weight: 600;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            border-color: #007bff;
+            border-radius: 8px;
+        }
+        .form-control {
+            border-radius: 8px;
+        }
+        .alert {
+            border-radius: 8px;
+        }
+        .refresh-btn {
+            background-color: #28a745;
+            border-color: #28a745;
+            color: white;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 0.9em;
+        }
+        .refresh-btn:hover {
+            background-color: #218838;
+            border-color: #1e7e34;
+        }
+        .loading {
+            opacity: 0.6;
+        }
+        .sentiment-positive {
+            color: #28a745;
+            font-weight: 600;
+        }
+        .sentiment-negative {
+            color: #dc3545;
+            font-weight: 600;
+        }
+        .sentiment-neutral {
+            color: #6c757d;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mb-4 text-center">
+            <i class="fas fa-chart-line text-primary"></i>
+            Financial News Sentiment Trading System
+        </h1>
+        
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-edit"></i> Manual Headline Input</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="headline-form">
+                            <div class="mb-3">
+                                <label for="headline-input" class="form-label">Enter a financial headline:</label>
+                                <input type="text" class="form-control" id="headline-input" 
+                                       placeholder="e.g., Apple beats earnings expectations, stock rises 5%" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-paper-plane"></i> Process Headline
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-cogs"></i> System Control</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="simulation-toggle" checked>
+                            <label class="form-check-label" for="simulation-toggle">Auto-fetch news</label>
+                        </div>
+                        <div id="simulation-status" class="alert alert-success">
+                            <i class="fas fa-play-circle"></i> GNews stream running (5min interval)
+                        </div>
+                        <button id="refresh-news-btn" class="refresh-btn btn btn-sm">
+                            <i class="fas fa-sync-alt"></i> Fetch Latest News
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5><i class="fas fa-newspaper"></i> Latest Financial News</h5>
+                        <small class="text-light">Real-time from GNews API</small>
+                    </div>
+                    <div class="card-body">
+                        <div id="news-container">
+                            <div class="text-center p-4">
+                                <i class="fas fa-spinner fa-spin fa-2x text-primary mb-3"></i>
+                                <p class="text-muted">Loading latest financial news...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h5><i class="fas fa-brain"></i> Recent Headlines & Processing</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="headlines-container">
+                            <p class="text-muted text-center">No headlines processed yet.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-chart-bar"></i> Current Trading Signals</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="signals-container">
+                            <p class="text-muted text-center">No trading signals generated yet.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // WebSocket connection
+        const socket = new WebSocket(`ws://${window.location.host}/ws`);
+        
+        // DOM elements
+        const headlineForm = document.getElementById('headline-form');
+        const headlineInput = document.getElementById('headline-input');
+        const newsContainer = document.getElementById('news-container');
+        const headlinesContainer = document.getElementById('headlines-container');
+        const signalsContainer = document.getElementById('signals-container');
+        const simulationToggle = document.getElementById('simulation-toggle');
+        const simulationStatus = document.getElementById('simulation-status');
+        const refreshNewsBtn = document.getElementById('refresh-news-btn');
+        
+        // Store recent headlines and signals
+        const recentHeadlines = [];
+        const currentSignals = {};
+        const latestNews = [];
+        
+        // WebSocket event handlers
+        socket.onopen = () => {
+            console.log('WebSocket connection established');
+            loadLatestNews(); // Load news when connected
+        };
+        
+        socket.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            if (message.type === 'headline') {
+                addHeadline(message.data);
+            } else if (message.type === 'signals') {
+                updateSignals(message.data);
+            } else if (message.type === 'news') {
+                updateNews(message.data);
+            }
+        };
+        
+        socket.onclose = () => {
+            console.log('WebSocket connection closed');
+            // Try to reconnect after a delay
+            setTimeout(() => {
+                location.reload();
+            }, 5000);
+        };
+        
+        // Form submission handler
+        headlineForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const headline = headlineInput.value.trim();
+            
+            if (headline) {
+                try {
+                    const response = await fetch('/process-headline', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ headline })
+                    });
+                    
+                    if (response.ok) {
+                        const result = await response.json();
+                        headlineInput.value = '';
+                        // The result will come through WebSocket
+                    } else {
+                        console.error('Error processing headline');
+                        alert('Error processing headline. Please try again.');
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('Network error. Please check your connection.');
+                }
+            }
+        });
+        
+        // Refresh news button handler
+        refreshNewsBtn.addEventListener('click', async () => {
+            await loadLatestNews();
+        });
+        
+        // Simulation toggle handler
+        simulationToggle.addEventListener('change', async () => {
+            const isRunning = simulationToggle.checked;
+            
+            simulationStatus.className = isRunning ? 'alert alert-success' : 'alert alert-warning';
+            simulationStatus.innerHTML = isRunning ? 
+                '<i class="fas fa-play-circle"></i> GNews stream running (5min interval)' : 
+                '<i class="fas fa-pause-circle"></i> GNews stream paused';
+        });
+        
+        // Function to load latest news
+        async function loadLatestNews() {
+            try {
+                refreshNewsBtn.classList.add('loading');
+                refreshNewsBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+                
+                const response = await fetch('/latest-news');
+                if (response.ok) {
+                    const data = await response.json();
+                    updateNews(data.articles || []);
+                } else {
+                    console.error('Failed to load news');
+                }
+            } catch (error) {
+                console.error('Error loading news:', error);
+            } finally {
+                refreshNewsBtn.classList.remove('loading');
+                refreshNewsBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Fetch Latest News';
+            }
+        }
+        
+        // Function to update news in the UI
+        function updateNews(newsArticles) {
+            newsContainer.innerHTML = '';
+            
+            if (!newsArticles || newsArticles.length === 0) {
+                newsContainer.innerHTML = `
+                    <div class="text-center p-4">
+                        <i class="fas fa-exclamation-circle fa-2x text-warning mb-3"></i>
+                        <p class="text-muted">No financial news available at the moment.</p>
+                        <button onclick="loadLatestNews()" class="btn btn-outline-primary btn-sm">
+                            <i class="fas fa-refresh"></i> Try Again
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+            
+            newsArticles.slice(0, 6).forEach(article => {
+                const articleDiv = document.createElement('div');
+                articleDiv.className = 'news-article';
+                
+                const publishedDate = article.published_at ? 
+                    new Date(article.published_at).toLocaleString() : 'Recently';
+                
+                const sourceLink = article.source?.url ? 
+                    `<a href="${article.source.url}" target="_blank" class="source-link">${article.source.name}</a>` :
+                    article.source?.name || 'Unknown Source';
+                
+                articleDiv.innerHTML = `
+                    <div class="title">${article.headline}</div>
+                    <div class="description">${article.description || 'No description available.'}</div>
+                    <div class="meta">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <i class="fas fa-clock"></i> ${publishedDate}
+                            </div>
+                            <div class="col-md-6 text-md-end">
+                                <i class="fas fa-external-link-alt"></i> ${sourceLink}
+                                ${article.url ? `| <a href="${article.url}" target="_blank" class="source-link">Read Full Article</a>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                newsContainer.appendChild(articleDiv);
+            });
+        }
+        
+        // Function to add a new headline to the UI
+        function addHeadline(data) {
+            // Add to recent headlines
+            recentHeadlines.unshift(data);
+            
+            // Keep only the 5 most recent headlines
+            if (recentHeadlines.length > 5) {
+                recentHeadlines.pop();
+            }
+            
+            // Update the UI
+            renderHeadlines();
+        }
+        
+        // Function to update signals in the UI
+        function updateSignals(signals) {
+            // Update current signals
+            Object.assign(currentSignals, signals);
+            
+            // Update the UI
+            renderSignals();
+        }
+        
+        // Function to render headlines in the UI
+        function renderHeadlines() {
+            headlinesContainer.innerHTML = '';
+            
+            recentHeadlines.forEach(data => {
+                const headlineDiv = document.createElement('div');
+                headlineDiv.className = 'headline';
+                
+                const headlineText = document.createElement('p');
+                headlineText.className = 'mb-2';
+                headlineText.innerHTML = `<strong>${data.headline}</strong>`;
+                
+                const agentOutputs = document.createElement('div');
+                agentOutputs.className = 'agent-outputs';
+                
+                // Classifier output
+                if (data.sentiment) {
+                    const classifierOutput = document.createElement('div');
+                    classifierOutput.className = 'agent-output classifier';
+                    const sentimentClass = data.sentiment.sentiment === 'positive' ? 'sentiment-positive' :
+                                          data.sentiment.sentiment === 'negative' ? 'sentiment-negative' : 'sentiment-neutral';
+                    classifierOutput.innerHTML = `
+                        <strong><i class="fas fa-brain"></i> Sentiment:</strong> 
+                        <span class="${sentimentClass}">${data.sentiment.sentiment}</span> 
+                        (${(data.sentiment.confidence * 100).toFixed(1)}% confidence)
+                    `;
+                    agentOutputs.appendChild(classifierOutput);
+                }
+                
+                // Mapper output
+                if (data.tickers) {
+                    const mapperOutput = document.createElement('div');
+                    mapperOutput.className = 'agent-output mapper';
+                    mapperOutput.innerHTML = `
+                        <strong><i class="fas fa-tags"></i> Tickers:</strong> ${data.tickers.join(', ') || 'None found'}
+                    `;
+                    agentOutputs.appendChild(mapperOutput);
+                }
+                
+                headlineDiv.appendChild(headlineText);
+                headlineDiv.appendChild(agentOutputs);
+                
+                headlinesContainer.appendChild(headlineDiv);
+            });
+            
+            if (recentHeadlines.length === 0) {
+                headlinesContainer.innerHTML = '<p class="text-muted text-center">No headlines processed yet.</p>';
+            }
+        }
+        
+        // Function to render signals in the UI
+        function renderSignals() {
+            signalsContainer.innerHTML = '';
+            
+            const tickers = Object.keys(currentSignals);
+            
+            if (tickers.length === 0) {
+                signalsContainer.innerHTML = '<p class="text-muted text-center">No trading signals generated yet.</p>';
+                return;
+            }
+            
+            tickers.forEach(ticker => {
+                const signal = currentSignals[ticker];
+                
+                const signalDiv = document.createElement('div');
+                signalDiv.className = 'mb-4 p-3 border rounded';
+                
+                let signalClass = '';
+                let signalIcon = '';
+                if (signal.signal === 'LONG') {
+                    signalClass = 'signal-long';
+                    signalIcon = 'fas fa-arrow-up';
+                } else if (signal.signal === 'SHORT') {
+                    signalClass = 'signal-short';
+                    signalIcon = 'fas fa-arrow-down';
+                } else {
+                    signalClass = 'signal-flat';
+                    signalIcon = 'fas fa-minus';
+                }
+                
+                signalDiv.innerHTML = `
+                    <h5><i class="fas fa-chart-line"></i> ${ticker}</h5>
+                    <p>Signal: <i class="${signalIcon}"></i> <span class="${signalClass}">${signal.signal}</span></p>
+                    <p>Sentiment: ${signal.sentiment ? signal.sentiment.toFixed(2) : 'N/A'}</p>
+                    <p>Headlines: ${signal.headline_count || 0}</p>
+                    <p>Confidence: ${signal.confidence ? (signal.confidence * 100).toFixed(1) : 0}%</p>
+                    <div class="confidence-bar">
+                        <div class="confidence-level" style="width: ${(signal.confidence || 0) * 100}%"></div>
+                    </div>
+                `;
+                
+                signalsContainer.appendChild(signalDiv);
+            });
+        }
+        
+        // Initial data load
+        async function loadInitialData() {
+            try {
+                // Load latest signals
+                const signalsResponse = await fetch('/latest-signals');
+                if (signalsResponse.ok) {
+                    const signals = await signalsResponse.json();
+                    updateSignals(signals);
+                }
+                
+                // Load signal history
+                const historyResponse = await fetch('/signal-history');
+                if (historyResponse.ok) {
+                    const history = await historyResponse.json();
+                    history.slice(0, 5).forEach(item => {
+                        recentHeadlines.push({
+                            headline: item.headline,
+                            sentiment: item.sentiment,
+                            tickers: item.tickers
+                        });
+                    });
+                    renderHeadlines();
+                }
+                
+                // Load latest news
+                await loadLatestNews();
+            } catch (error) {
+                console.error('Error loading initial data:', error);
+            }
+        }
+        
+        // Load initial data when the page loads
+        loadInitialData();
+    </script>
+</body>
+</html>
