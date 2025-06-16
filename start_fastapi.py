@@ -16,13 +16,15 @@ def main():
     os.makedirs("logs", exist_ok=True)
     
     print("🚀 MoonbeamAI: Financial News Sentiment Trading System")
-    print("🌟 Powered by Alpha Vantage real-time financial news")
-    print("⚡ FastAPI + Alpha Vantage Integration")
+    print("🌟 Powered by TickerTick real-time financial news")
+    print("⚡ FastAPI + TickerTick Integration")
     print("=" * 50)
     print(f"🌐 Server starting at: http://localhost:8000")
     print(f"📊 System status: http://localhost:8000/system-status")
     print(f"📡 WebSocket: ws://localhost:8000/ws")
     print(f"📖 API docs: http://localhost:8000/docs")
+    print(f"📰 Latest news: http://localhost:8000/latest-news")
+    print(f"📈 Trading signals: http://localhost:8000/latest-signals")
     print("=" * 50)
     
     # Start the FastAPI server

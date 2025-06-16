@@ -2,6 +2,8 @@ import asyncio
 import logging
 from typing import Dict, List, Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -9,7 +11,7 @@ from pydantic import BaseModel
 
 from system_coordinator import SystemCoordinator
 from headline_simulator import HeadlineSimulator
-from google_news_fetcher import GoogleNewsFetcher
+from tickertick_news_fetcher import TickerTickNewsFetcher
 
 # Configure logging
 logging.basicConfig(
@@ -19,14 +21,14 @@ logging.basicConfig(
 logger = logging.getLogger("FastAPI")
 
 # Configuration
-USE_GOOGLE_NEWS = True  # Set to False to use simulator instead
+USE_TICKERTICK_NEWS = True  # Set to False to use simulator instead
 USE_ALPHA_VANTAGE_SENTIMENT = False  # We'll use sentiment_aggregator_agent instead
-NEWS_FETCH_INTERVAL = 300  # 5 minutes in seconds (more frequent for better user experience)
+NEWS_FETCH_INTERVAL = 180  # 3 minutes in seconds (respects TickerTick's 10 requests/minute limit)
 
 # Initialize FastAPI app
 app = FastAPI(
     title="MoonbeamAI: Financial News Sentiment Trading System",
-    description="Real-time financial news sentiment analysis with GNews integration",
+    description="Real-time financial news sentiment analysis with TickerTick integration",
     version="2.0.0"
 )
 
@@ -53,9 +55,9 @@ coordinator = SystemCoordinator(
 
 # Initialize news sources
 simulator = HeadlineSimulator()
-if USE_GOOGLE_NEWS:
-    news_fetcher = GoogleNewsFetcher(lang='en', region='US')
-    logger.info("Using Google News real news data")
+if USE_TICKERTICK_NEWS:
+    news_fetcher = TickerTickNewsFetcher()
+    logger.info("Using TickerTick real news data")
 else:
     news_fetcher = simulator
     logger.info("Using simulated news data")
@@ -114,16 +116,17 @@ async def process_news_articles(news_articles: List[Dict[str, Any]]):
         # Broadcast news to WebSocket clients
         await news_listener(news_articles)
         
-        # Process each article's headline through the sentiment pipeline
+        # Process each article using the enhanced method that utilizes existing tickers
         for article in news_articles:
             headline = article.get('headline', '')
             if headline:
                 try:
-                    signals = await coordinator.process_headline(headline)
+                    # Use the enhanced method that handles pre-tickered articles
+                    signals = await coordinator.process_news_article(article)
                     if signals:
-                        logger.info(f"Generated signals for headline: {headline[:50]}...")
+                        logger.info(f"Generated signals for article: {headline[:50]}...")
                 except Exception as e:
-                    logger.warning(f"Error processing headline '{headline}': {e}")
+                    logger.warning(f"Error processing article '{headline}': {e}")
                     
         logger.info(f"Processed {len(news_articles)} news articles")
         
@@ -134,15 +137,16 @@ async def process_news_articles(news_articles: List[Dict[str, Any]]):
 async def start_news_stream():
     """Start the news stream in the background."""
     try:
-        if USE_GOOGLE_NEWS:
-            logger.info(f"Starting Google News stream with {NEWS_FETCH_INTERVAL}s intervals")
+        if USE_TICKERTICK_NEWS:
+            logger.info(f"Starting TickerTick stream with {NEWS_FETCH_INTERVAL}s intervals")
             
-            # Modified callback to handle full news articles
-            async def news_callback(headline):
-                await coordinator.process_headline(headline)
+            # TickerTick callback handles list of news articles
+            async def tickertick_callback(news_articles):
+                await process_news_articles(news_articles)
             
-            # Start the news stream - this will call news_callback for each headline
-            await news_fetcher.start_stream(news_callback, interval_seconds=NEWS_FETCH_INTERVAL)
+            # Start the news stream - this will call tickertick_callback with news articles
+            # The stream will use the default 16-hour lookback period
+            await news_fetcher.start_stream(tickertick_callback)
         else:
             logger.info("Starting headline simulator with 10s intervals")
             await simulator.start_stream(coordinator.process_headline, interval_seconds=10)
@@ -199,6 +203,15 @@ async def get_latest_signals():
         logger.error(f"Error getting latest signals: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/signals-by-ticker")
+async def get_signals_by_ticker():
+    """Get the current aggregated signals organized by ticker."""
+    try:
+        return await coordinator.get_signals_by_ticker()
+    except Exception as e:
+        logger.error(f"Error getting signals by ticker: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/signal-history")
 async def get_signal_history():
     """Get the history of trading signals."""
@@ -209,15 +222,16 @@ async def get_signal_history():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/latest-news")
-async def get_latest_news():
+async def get_latest_news(lookback_hours: int = 16):
     """Get the latest news articles with snippets."""
     try:
-        if USE_GOOGLE_NEWS and hasattr(news_fetcher, 'fetch_latest_news'):
-            news_articles = await news_fetcher.fetch_latest_news()
+        if USE_TICKERTICK_NEWS and hasattr(news_fetcher, 'fetch_latest_news'):
+            news_articles = await news_fetcher.fetch_latest_news(lookback_hours=lookback_hours)
             return {
                 "success": True,
                 "articles": news_articles,
-                "count": len(news_articles)
+                "count": len(news_articles),
+                "lookback_hours": lookback_hours
             }
         else:
             # Fallback to simulator
@@ -249,9 +263,9 @@ async def get_system_status():
         status = await coordinator.get_system_status()
         
         # Add news fetcher information
-        if USE_GOOGLE_NEWS and hasattr(news_fetcher, 'get_api_usage_info'):
+        if USE_TICKERTICK_NEWS and hasattr(news_fetcher, 'get_api_usage_info'):
             status['news_fetcher'] = {
-                'type': 'Google News',
+                'type': 'TickerTick',
                 'api_usage': news_fetcher.get_api_usage_info(),
                 'fetch_interval_seconds': NEWS_FETCH_INTERVAL
             }
@@ -267,43 +281,47 @@ async def get_system_status():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/fetch-news")
-async def manual_fetch_news():
+async def manual_fetch_news(lookback_hours: int = 16):
     """Manually trigger a news fetch (for testing)."""
     try:
-        if USE_GOOGLE_NEWS and hasattr(news_fetcher, 'fetch_latest_news'):
+        if USE_TICKERTICK_NEWS and hasattr(news_fetcher, 'fetch_latest_news'):
             # Fetch full news articles
-            news_articles = await news_fetcher.fetch_latest_news()
+            news_articles = await news_fetcher.fetch_latest_news(lookback_hours=lookback_hours)
             
-            # Process articles and extract headlines for sentiment analysis
+            # Process articles using the enhanced method that utilizes existing tickers
             results = []
             for article in news_articles[:5]:  # Limit to 5 articles for manual testing
                 headline = article.get('headline', '')
                 if headline:
                     try:
-                        signals = await coordinator.process_headline(headline)
+                        # Use the enhanced method that handles pre-tickered articles
+                        signals = await coordinator.process_news_article(article)
                         results.append({
                             'headline': headline,
                             'description': article.get('description', ''),
                             'url': article.get('url', ''),
                             'source': article.get('source', {}),
                             'published_at': article.get('published_at', ''),
+                            'tickers': article.get('tickers', []),
                             'signals': signals
                         })
                     except Exception as e:
-                        logger.warning(f"Error processing headline '{headline}': {e}")
+                        logger.warning(f"Error processing article '{headline}': {e}")
                         results.append({
                             'headline': headline,
                             'description': article.get('description', ''),
+                            'tickers': article.get('tickers', []),
                             'error': str(e)
                         })
             
             return {
                 'success': True,
                 'articles_fetched': len(news_articles),
+                'lookback_hours': lookback_hours,
                 'results': results
             }
         else:
-            raise HTTPException(status_code=400, detail="Google News fetcher not available")
+            raise HTTPException(status_code=400, detail="TickerTick news fetcher not available")
             
     except HTTPException:
         raise
@@ -318,7 +336,7 @@ async def health_check():
         "status": "healthy",
         "timestamp": "2025-01-06T00:00:00Z",
         "version": "2.0.0",
-        "google_news_enabled": USE_GOOGLE_NEWS,
+        "ticker_tick_enabled": USE_TICKERTICK_NEWS,
         "sentiment_aggregator": "enabled"
     }
 
@@ -378,8 +396,8 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.on_event("startup")
 async def startup_event():
     """Initialize the application on startup."""
-    logger.info(f"🚀 Starting MoonbeamAI with Google News integration...")
-    logger.info(f"📰 Google News: {'Enabled' if USE_GOOGLE_NEWS else 'Disabled'}")
+    logger.info(f"🚀 Starting MoonbeamAI with TickerTick integration...")
+    logger.info(f"📰 TickerTick: {'Enabled' if USE_TICKERTICK_NEWS else 'Disabled'}")
     logger.info(f"💭 Sentiment Aggregator: Enabled")
     logger.info(f"⏱️  News fetch interval: {NEWS_FETCH_INTERVAL} seconds")
     
@@ -403,11 +421,17 @@ async def shutdown_event():
     logger.info("✅ MoonbeamAI shutdown complete")
 
 # Error handlers
-@app.exception_handler(404)
-async def not_found_handler(request: Request, exc):
-    return {"error": "Endpoint not found", "status_code": 404}
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": exc.detail, "status_code": exc.status_code}
+    )
 
-@app.exception_handler(500)
-async def internal_error_handler(request: Request, exc):
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
     logger.error(f"Internal server error: {exc}")
-    return {"error": "Internal server error", "status_code": 500}
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error", "status_code": 500}
+    )

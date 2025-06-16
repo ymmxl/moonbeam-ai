@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Financial News Sentiment Trading System</title>
+    <title>moonbeamAI: Financial News Sentiment Trading System</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -189,7 +189,7 @@
                             <label class="form-check-label" for="simulation-toggle">Auto-fetch news</label>
                         </div>
                         <div id="simulation-status" class="alert alert-success">
-                            <i class="fas fa-play-circle"></i> GNews stream running (5min interval)
+                            <i class="fas fa-play-circle"></i> Google News stream running (5min interval)
                         </div>
                         <button id="refresh-news-btn" class="refresh-btn btn btn-sm">
                             <i class="fas fa-sync-alt"></i> Fetch Latest News
@@ -204,7 +204,7 @@
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h5><i class="fas fa-newspaper"></i> Latest Financial News</h5>
-                        <small class="text-light">Real-time from GNews API</small>
+                        <small class="text-light">Real-time from Google News</small>
                     </div>
                     <div class="card-body">
                         <div id="news-container">
@@ -327,8 +327,8 @@
             
             simulationStatus.className = isRunning ? 'alert alert-success' : 'alert alert-warning';
             simulationStatus.innerHTML = isRunning ? 
-                '<i class="fas fa-play-circle"></i> GNews stream running (5min interval)' : 
-                '<i class="fas fa-pause-circle"></i> GNews stream paused';
+                '<i class="fas fa-play-circle"></i> Google News stream running (5min interval)' : 
+                '<i class="fas fa-pause-circle"></i> Google News stream paused';
         });
         
         // Function to load latest news
@@ -479,12 +479,18 @@
             
             const tickers = Object.keys(currentSignals);
             
-            if (tickers.length === 0) {
-                signalsContainer.innerHTML = '<p class="text-muted text-center">No trading signals generated yet.</p>';
+            // Filter out FLAT signals - only show LONG and SHORT signals
+            const activeTickers = tickers.filter(ticker => {
+                const signal = currentSignals[ticker];
+                return signal.signal === 'LONG' || signal.signal === 'SHORT';
+            });
+            
+            if (activeTickers.length === 0) {
+                signalsContainer.innerHTML = '<p class="text-muted text-center">No active trading signals generated yet.</p>';
                 return;
             }
             
-            tickers.forEach(ticker => {
+            activeTickers.forEach(ticker => {
                 const signal = currentSignals[ticker];
                 
                 const signalDiv = document.createElement('div');
@@ -498,9 +504,6 @@
                 } else if (signal.signal === 'SHORT') {
                     signalClass = 'signal-short';
                     signalIcon = 'fas fa-arrow-down';
-                } else {
-                    signalClass = 'signal-flat';
-                    signalIcon = 'fas fa-minus';
                 }
                 
                 signalDiv.innerHTML = `

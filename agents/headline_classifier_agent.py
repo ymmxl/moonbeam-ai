@@ -77,35 +77,50 @@ class HeadlineClassifierAgent(BaseAgent):
     
     def _extract_tickers_regex_fallback(self, text: str) -> List[str]:
         """
-        Fallback ticker extraction using regex patterns.
+        Extract ticker symbols using regex patterns as fallback.
         
         Args:
-            text: Input text to search for tickers
+            text: Input text to extract tickers from
             
         Returns:
-            List of potential ticker symbols
+            List of ticker symbols, empty list if none found
         """
         tickers = []
         
-        # Common ticker patterns in financial news
-        patterns = [
+        # Pattern for potential ticker symbols
+        ticker_patterns = [
             r'\$([A-Z]{1,5})\b',  # $AAPL format
-            r'\b([A-Z]{2,5})\s+(?:stock|shares|trading|traded)\b',  # AAPL stock
-            r'\b([A-Z]{2,5})\s+(?:Inc|Corp|Corporation|Company)\b',  # AAPL Inc
-            r'\(([A-Z]{1,5})\)',  # (AAPL) format
-            r'\b([A-Z]{2,5}):\s*[A-Z]+\b',  # NASDAQ:AAPL format
+            r'\b([A-Z]{2,5})\b',  # AAPL format (2-5 uppercase letters)
         ]
         
-        for pattern in patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
+        for pattern in ticker_patterns:
+            matches = re.findall(pattern, text)
             for match in matches:
-                clean_ticker = match.upper()
-                if (2 <= len(clean_ticker) <= 5 and 
-                    clean_ticker.isalpha() and
-                    clean_ticker not in ['THE', 'AND', 'FOR', 'ARE', 'BUT', 'NOT', 'YOU', 'ALL', 'CAN', 'HER', 'WAS', 'ONE', 'OUR', 'HAD', 'BY', 'NEWS', 'SAID', 'WILL', 'FROM', 'STOCK', 'MARKET', 'TODAY', 'TRUMP', 'WITH', 'THIS', 'THAT', 'THEY', 'WERE', 'BEEN', 'HAVE', 'DOES', 'WHEN', 'WHERE', 'WHAT', 'WHO', 'HOW', 'WHY', 'WHICH']):
-                    tickers.append(clean_ticker)
+                # Filter out common false positives
+                if match not in ['THE', 'AND', 'FOR', 'ARE', 'BUT', 'NOT', 'YOU', 'ALL', 'CAN', 'HER', 'WAS', 'ONE', 'OUR', 'HAD', 'BY', 'NEWS', 'STOCK', 'MARKET', 'TODAY', 'TRUMP', 'WITH', 'FROM', 'WILL', 'SAID', 'THIS', 'THAT', 'THEY', 'WERE', 'BEEN', 'HAVE', 'DOES', 'WHEN', 'WHERE', 'WHAT', 'WHO', 'HOW', 'WHY', 'WHICH', 'SEC', 'CEO', 'CFO', 'IPO', 'FDA', 'API', 'USA']:
+                    tickers.append(match.upper())
         
-        return list(set(tickers))
+        return list(set(tickers))  # Remove duplicates
+    
+    def _round_sentiment_score(self, score: float) -> float:
+        """
+        Round sentiment score to 5 decimal places and handle very small numbers.
+        
+        Args:
+            score: Raw sentiment score from the model
+            
+        Returns:
+            Rounded sentiment score
+        """
+        # Round to 5 decimal places
+        rounded_score = round(score, 5)
+        
+        # If the absolute value is very small (< 0.0001), treat as 0
+        # This prevents scientific notation like -4e-05
+        if abs(rounded_score) < 0.0001:
+            return 0.0
+        
+        return rounded_score
     
     def extract_tickers(self, text: str) -> List[str]:
         """
@@ -145,15 +160,16 @@ class HeadlineClassifierAgent(BaseAgent):
         
         return tickers
     
-    async def process(self, headline: str) -> Dict[str, Union[str, float, List[str]]]:
+    async def process(self, headline: str, tickers: Optional[List[str]] = None) -> Dict[str, Union[str, float, List[str]]]:
         """
-        Classify the sentiment of a financial headline and extract tickers.
+        Classify the sentiment of a financial headline.
         
         Args:
             headline: The financial headline to classify
+            tickers: Optional list of ticker symbols (from TickerTick API)
             
         Returns:
-            A dictionary with sentiment classification, confidence score, and extracted tickers
+            A dictionary with sentiment classification, confidence score, and tickers
         """
         # Sentiment analysis
         inputs = self.sentiment_tokenizer(headline, return_tensors="pt", truncation=True)
@@ -163,17 +179,22 @@ class HeadlineClassifierAgent(BaseAgent):
             positive_prob = probs[0][2].item()
             negative_prob = probs[0][0].item()
             neutral_prob = probs[0][1].item()
-            sentiment_score = (positive_prob*2) + (negative_prob*-2) + (neutral_prob*0)
+            raw_sentiment_score = (positive_prob*2) + (negative_prob*-2) + (neutral_prob*0)
+            sentiment_score = self._round_sentiment_score(raw_sentiment_score)
             sentiment_label = self.label_map[torch.argmax(probs).item()]
         
-        # Ticker extraction
-        extracted_tickers = self.extract_tickers(headline)
+        # Use provided tickers or fallback to extraction if none provided
+        if tickers is not None:
+            final_tickers = tickers
+        else:
+            # Fallback: extract tickers if none provided (for backward compatibility)
+            final_tickers = self._extract_tickers_regex_fallback(headline)
         
         result = {
             "label": sentiment_label,
             "sentiment_score": sentiment_score,
-            "tickers": extracted_tickers,
-            "ticker_count": len(extracted_tickers)
+            "tickers": final_tickers,
+            "ticker_count": len(final_tickers)
         }
         
         return result

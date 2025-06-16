@@ -8,10 +8,11 @@ class SignalDecisionAgent(BaseAgent):
     Agent that generates trading signals based on aggregated sentiment scores.
     """
     
-    def __init__(self, long_threshold: float = 0.5, short_threshold: float = -0.5):
+    def __init__(self, long_threshold: float = 0.7, short_threshold: float = -0.7, min_headline_count: int = 2):
         super().__init__("SignalDecision")
         self.long_threshold = long_threshold
         self.short_threshold = short_threshold
+        self.min_headline_count = min_headline_count
     
     async def process(self, aggregated_data: Dict[str, Dict[str, float]]) -> Dict[str, Dict[str, Any]]:
         """
@@ -42,12 +43,17 @@ class SignalDecisionAgent(BaseAgent):
             trend = data["trend"]
             latest_score = data["latest_score"]
             
-            # Apply decision rules based on average sentiment
-            if avg_sentiment > self.long_threshold:
-                signal = "LONG"
-            elif avg_sentiment < self.short_threshold:
-                signal = "SHORT"
+            # Apply decision rules based on average sentiment and minimum headline count
+            # Only generate LONG/SHORT signals if we have enough headlines
+            if count >= self.min_headline_count:
+                if avg_sentiment > self.long_threshold:
+                    signal = "LONG"
+                elif avg_sentiment < self.short_threshold:
+                    signal = "SHORT"
+                else:
+                    signal = "FLAT"
             else:
+                # If we don't have enough headlines, always generate FLAT signal
                 signal = "FLAT"
             
             # Calculate confidence based on multiple factors:

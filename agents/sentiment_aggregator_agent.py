@@ -95,7 +95,7 @@ class SentimentAggregatorAgent(BaseAgent):
                 sentiment_data: Dict with either:
                     - 'sentiment' and 'confidence' keys
                     - 'sentiment_score' and 'label' keys (from headline_classifier_agent)
-                tickers: List of ticker symbols (from ticker_mapper_agent)
+                tickers: List of ticker symbols (from TickerTick API or manually provided)
                 
         Returns:
             Dictionary mapping tickers to their aggregated sentiment data
