@@ -35,7 +35,7 @@ MoonbeamAI uses a **multi-agent pipeline architecture** where specialized AI age
 ### Core Components
 
 #### 1. **News Ingestion Layer**
-- **TickerTick Integration**: Real-time financial news with pre-extracted tickers
+- **TickerTick Integration**: Real-time financial news with pre-extracted tickers (powered by [TickerTick API](https://github.com/hczhu/TickerTick-API))
 - **Google News Fallback**: Alternative news source for broader coverage
 - **Headline Simulator**: Synthetic data for testing and development
 
@@ -238,7 +238,7 @@ min_headlines = 2  # Minimum headlines required
 ```
 
 ### News Sources
-- **TickerTick**: Real-time financial news with ticker extraction
+- **TickerTick**: Real-time financial news with ticker extraction ([TickerTick API](https://github.com/hczhu/TickerTick-API))
 - **Google News**: Broader news coverage with custom ticker mapping
 - **Simulator**: Synthetic headlines for testing
 
@@ -294,7 +294,7 @@ The authors and contributors are not responsible for any financial losses incurr
 
 ## 🙏 Acknowledgments
 
-- Financial news data provided by TickerTick
+- **TickerTick API**: Financial news data and ticker information provided by [TickerTick API](https://github.com/hczhu/TickerTick-API) - A powerful stock news API that covers all companies listed in US stock markets with a sophisticated query language
 - Sentiment analysis models from Hugging Face Transformers
 - Built with FastAPI, Flask, and modern Python tooling
 
